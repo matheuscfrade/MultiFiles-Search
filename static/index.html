@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Files Search | Premium Analytics</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="glass-bg"></div>
+
+    <main class="container">
+        <header class="header">
+            <div class="logo-area">
+                <div class="icon">🔍</div>
+                <h1>Multi-Files Search</h1>
+            </div>
+            <p class="subtitle">O <strong>Control F</strong> que você precisava. Busque termos em múltiplos arquivos de
+                uma vez.</p>
+        </header>
+
+        <section class="search-panel glass">
+            <div class="input-group">
+                <label for="directory">Diretório Raiz</label>
+                <input type="text" id="directory" placeholder="Ex: C:\Documentos\2024" autocomplete="off">
+            </div>
+
+            <div class="input-group">
+                <label for="terms">Termos de Busca (separados por vírgula)</label>
+                <input type="text" id="terms" placeholder="Ex: Contrato, Licitação, Nomeação" autocomplete="off">
+            </div>
+
+            <button id="btn-search" class="btn-primary">
+                <span class="btn-text">Iniciar Varredura</span>
+                <div class="loader-inline hidden"></div>
+            </button>
+        </section>
+
+        <section id="progress-area" class="glass hidden">
+            <div class="progress-info">
+                <span id="status-msg">Processando arquivos...</span>
+                <span id="percent">0%</span>
+            </div>
+            <div class="progress-bar-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div class="stats-row">
+                <div class="stat-card">
+                    <span class="stat-label">Arquivos</span>
+                    <span id="stat-files" class="stat-value">0 / 0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Ocorrências</span>
+                    <span id="stat-found" class="stat-value">0</span>
+                </div>
+            </div>
+            <div id="error-info" class="error-info hidden">
+                <p>⚠️ <span id="error-count">0</span> arquivos com erro. <a href="#" id="btn-show-errors">Ver detalhes</a></p>
+            </div>
+        </section>
+
+        <div id="modal-errors" class="modal-overlay hidden">
+            <div class="modal-content glass">
+                <div class="modal-header">
+                    <h3>Arquivos não processados</h3>
+                    <button id="btn-close-errors" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body scrollable">
+                    <ul id="error-list"></ul>
+                </div>
+            </div>
+        </div>
+
+        <section id="results-area" class="glass hidden">
+            <div class="results-header">
+                <h2>Resultados Encontrados</h2>
+                <div class="actions">
+                    <button id="btn-save-session" class="btn-secondary" title="Salvar progresso atual para continuar depois">💾 Salvar Sessão</button>
+                    <button id="btn-load-session" class="btn-secondary" title="Retomar busca de um arquivo salvo">📂 Carregar Sessão</button>
+                    <input type="file" id="input-load-session" accept=".json" class="hidden" style="display: none;">
+                    <button id="btn-export-zip" class="btn-primary" style="margin-left: 10px;">Baixar Tudo (ZIP)</button>
+                    <button id="btn-export" class="btn-secondary">Exportar XLSX</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th class="check-cell"><input type="checkbox" id="check-all" class="custom-checkbox"></th>
+                            <th style="width: 40%;">Arquivo / Página</th>
+                            <th style="width: 20%;">Termo</th>
+                            <th style="width: 40%;">Assunto</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <!-- Dynamic results -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal de Extração de PDF -->
+    <div id="modal-extract" class="modal-overlay hidden">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h3>Preparar Recorte do Documento</h3>
+                <button id="btn-close-modal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="preview-container">
+                    <iframe id="pdf-preview" src=""></iframe>
+                </div>
+                <div class="modal-controls">
+                    <p id="modal-doc-info" class="doc-info-text"></p>
+                    
+                    <div class="input-group">
+                        <label for="modal-assunto">Assunto / Nome do Documento:</label>
+                        <input type="text" id="modal-assunto" placeholder="Ex: Portaria de Nomeação - José Silva">
+                        <small>Este será o nome do arquivo PDF gerado.</small>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="page-range">Páginas para Extrair (Intervalo):</label>
+                        <input type="text" id="page-range" placeholder="Ex: 1, 3-5">
+                    </div>
+                    <div class="alert-info">
+                        <strong>Lembrete:</strong> Ao extrair apenas uma página, o documento pode ficar incompleto.
+                        Certifique-se de incluir as páginas necessárias para a validade do ato.
+                    </div>
+                    <div class="modal-footer" style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button id="btn-discard" class="btn-secondary" style="flex: 1;">Descartar Resultado</button>
+                        <button id="btn-save-range" class="btn-primary" style="flex: 2;">Salvar e Manter</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>Desenvolvido por <a href="https://github.com/matheuscfrade" target="_blank" rel="noopener noreferrer">Matheus Costa Frade</a></p>
+        <p class="footer-links">
+            <a href="https://github.com/matheuscfrade/MultiFiles-Search/issues" target="_blank">Relatar Erro / Sugerir Melhoria</a>
+        </p>
+    </footer>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>
