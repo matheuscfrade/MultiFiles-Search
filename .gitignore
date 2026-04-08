@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller
+#  Often these files are omitted during development
+#  because they are generated during the build process
+build/
+dist/
+*.spec
+
+# VS Code
+.vscode/
+
+# Local configuration
+.env
+*.json
+.pytest_cache/
