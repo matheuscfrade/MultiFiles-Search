@@ -391,15 +391,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isFileValid = res.fileObject instanceof File || res.fileObject instanceof Blob;
 
-        if (isWebMode && isFileValid) {
-            const fileUrl = URL.createObjectURL(res.fileObject);
-            pdfPreview.src = `${fileUrl}#page=${res.pagina}`;
-        } else if (!isWebMode) {
-            pdfPreview.src = `/api/view?path=${encodeURIComponent(res.caminho)}#page=${res.pagina}`;
+        if (isWebMode) {
+            if (isFileValid) {
+                const fileUrl = URL.createObjectURL(res.fileObject);
+                pdfPreview.src = `${fileUrl}#page=${res.pagina}`;
+            } else {
+                pdfPreview.src = "";
+                alert(`⚠️ O arquivo físico "${res.arquivo}" não foi localizado.\n\nPor favor, clique no botão "Escolher Pasta" e selecione a pasta que contém este documento para reativar o preview.`);
+                modalExtract.classList.add('hidden'); // Fecha o modal pois não há o que mostrar
+                return;
+            }
         } else {
-            // Se for Web Mode mas não tiver o arquivo físico
-            pdfPreview.src = "";
-            alert("Arquivo físico não encontrado. Por favor, selecione a pasta novamente usando o botão 'Escolher Pasta'.");
+            // Modo Local
+            pdfPreview.src = `/api/view?path=${encodeURIComponent(res.caminho)}#page=${res.pagina}`;
         }
         
         modalExtract.classList.remove('hidden');
@@ -430,7 +434,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const isFileValid = res.fileObject instanceof File || res.fileObject instanceof Blob;
 
-            if (isWebMode && isFileValid) {
+            if (isWebMode) {
+                if (!isFileValid) {
+                    alert(`⚠️ Não é possível baixar o recorte do arquivo "${res.arquivo}" porque ele não está vinculado.\n\nSelecione a pasta de origem novamente.`);
+                    return;
+                }
+
                 const originalBytes = await res.fileObject.arrayBuffer();
                 const pdfDoc = await PDFLib.PDFDocument.load(originalBytes);
                 const newPdf = await PDFLib.PDFDocument.create();
