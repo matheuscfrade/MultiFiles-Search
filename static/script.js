@@ -77,7 +77,34 @@ document.addEventListener('DOMContentLoaded', () => {
     webDirectoryInput.onchange = (e) => {
         webFiles = Array.from(e.target.files);
         folderNameDisplay.innerText = webFiles.length > 0 ? `${webFiles.length} arquivos selecionados` : '';
+        if (currentResults.length > 0) {
+            relinkWebFiles();
+            renderResults(currentResults);
+        }
     };
+
+    function relinkWebFiles() {
+        if (!isWebMode || webFiles.length === 0) return;
+        
+        let relinkedCount = 0;
+        currentResults.forEach(res => {
+            // Se já tem um fileObject válido (instância de File), pula
+            if (res.fileObject instanceof File) return;
+
+            // Tenta encontrar o arquivo pelo caminho ou nome
+            const match = webFiles.find(f => 
+                (f.webkitRelativePath === res.caminho) || 
+                (f.name === res.arquivo && f.size === res.fileSize) || // fallback se o caminho mudar
+                (f.name === res.arquivo)
+            );
+
+            if (match) {
+                res.fileObject = match;
+                relinkedCount++;
+            }
+        });
+        console.log(`Relinked ${relinkedCount} files.`);
+    }
 
     async function checkActiveSearch() {
         if (isWebMode) return;
@@ -115,13 +142,19 @@ document.addEventListener('DOMContentLoaded', () => {
             checkAll.checked = false;
 
             try {
-                await fetch('/api/search', {
+                const resp = await fetch('/api/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ directory, terms })
                 });
+                
+                if (!resp.ok) {
+                    const errData = await resp.json();
+                    throw new Error(errData.error || 'Erro desconhecido no servidor.');
+                }
+
                 startPolling();
-            } catch (err) { alert('Erro ao iniciar busca no servidor.'); resetSearchButton(); }
+            } catch (err) { alert('Erro ao iniciar busca: ' + err.message); resetSearchButton(); }
         }
     });
 
@@ -169,7 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 pagina: p.pagina,
                                 termo: termo,
                                 assunto: "",
-                                fileObject: file // Guardamos o objeto para preview web
+                                fileObject: file, 
+                                fileSize: file.size // Guardamos o tamanho para ajudar no relink depois
                             });
                         }
                     });
@@ -257,26 +291,36 @@ document.addEventListener('DOMContentLoaded', () => {
     function startPolling() {
         if (pollInterval) clearInterval(pollInterval);
         pollInterval = setInterval(async () => {
-            const response = await fetch('/api/status');
-            const state = await response.json();
-            progressBar.style.width = `${state.progress}%`;
-            percentText.innerText = `${state.progress}%`;
-            statFiles.innerText = `${state.processed} / ${state.total}`;
-            statFound.innerText = state.found;
-            statusMsg.innerText = state.is_running ? 'Processando arquivos...' : 'Concluído!';
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) throw new Error('Falha na comunicação com o servidor.');
+                
+                const state = await response.json();
+                
+                // Validação básica do objeto de estado
+                if (state.progress === undefined) return;
 
-            if (state.failed_files && state.failed_files.length > 0) {
-                errorInfo.classList.remove('hidden');
-                errorCount.innerText = state.failed_files.length;
-                renderErrorList(state.failed_files);
-            } else {
-                errorInfo.classList.add('hidden');
-            }
+                progressBar.style.width = `${state.progress}%`;
+                percentText.innerText = `${state.progress}%`;
+                statFiles.innerText = `${state.processed} / ${state.total}`;
+                statFound.innerText = state.found;
+                statusMsg.innerText = state.is_running ? 'Processando arquivos...' : 'Concluído!';
 
-            if (!state.is_running && state.progress >= 100) {
-                clearInterval(pollInterval);
-                fetchResults();
-                resetSearchButton();
+                if (state.failed_files && state.failed_files.length > 0) {
+                    errorInfo.classList.remove('hidden');
+                    errorCount.innerText = state.failed_files.length;
+                    renderErrorList(state.failed_files);
+                } else {
+                    errorInfo.classList.add('hidden');
+                }
+
+                if (!state.is_running && state.progress >= 100) {
+                    clearInterval(pollInterval);
+                    fetchResults();
+                    resetSearchButton();
+                }
+            } catch (err) {
+                console.error("Erro no polling:", err);
             }
         }, 1000);
     }
@@ -345,11 +389,17 @@ document.addEventListener('DOMContentLoaded', () => {
         modalAssunto.value = res.manual_notes;
         pageRangeInput.value = res.page_range || res.pagina;
 
-        if (isWebMode && res.fileObject) {
+        const isFileValid = res.fileObject instanceof File || res.fileObject instanceof Blob;
+
+        if (isWebMode && isFileValid) {
             const fileUrl = URL.createObjectURL(res.fileObject);
             pdfPreview.src = `${fileUrl}#page=${res.pagina}`;
-        } else {
+        } else if (!isWebMode) {
             pdfPreview.src = `/api/view?path=${encodeURIComponent(res.caminho)}#page=${res.pagina}`;
+        } else {
+            // Se for Web Mode mas não tiver o arquivo físico
+            pdfPreview.src = "";
+            alert("Arquivo físico não encontrado. Por favor, selecione a pasta novamente usando o botão 'Escolher Pasta'.");
         }
         
         modalExtract.classList.remove('hidden');
@@ -378,7 +428,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btnIndicator.innerText = '⏳';
 
         try {
-            if (isWebMode && res.fileObject) {
+            const isFileValid = res.fileObject instanceof File || res.fileObject instanceof Blob;
+
+            if (isWebMode && isFileValid) {
                 const originalBytes = await res.fileObject.arrayBuffer();
                 const pdfDoc = await PDFLib.PDFDocument.load(originalBytes);
                 const newPdf = await PDFLib.PDFDocument.create();
@@ -484,10 +536,62 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const loadedData = JSON.parse(event.target.result);
                 if (!Array.isArray(loadedData)) throw new Error('Formato inválido.');
-                currentResults = loadedData;
+                
+                // Limpeza e normalização dos dados carregados
+                const currentDir = directoryInput.value.trim().replace(/^["']|["']$/g, '');
+
+                currentResults = loadedData.map(r => {
+                    // Se o fileObject veio como um objeto vazio do JSON, removemos
+                    if (r.fileObject && !(r.fileObject instanceof File)) {
+                        delete r.fileObject;
+                    }
+
+                    // Lógica de Rebase Inteligente para Modo Local
+                    if (!isWebMode && currentDir) {
+                        const normalizedRoot = currentDir.replace(/[\\/]$/, '');
+                        const isAbsolute = r.caminho.match(/^([a-zA-Z]:\\|\/)/);
+                        
+                        let finalPath = r.caminho;
+
+                        if (!isAbsolute) {
+                            // Era um caminho relativo (vindo da Web)
+                            let relPath = r.caminho.replace(/\//g, '\\');
+                            
+                            // Detecção de Redundância (Overlap)
+                            const rootParts = normalizedRoot.split(/[\\/]/);
+                            const lastRootFolder = rootParts[rootParts.length - 1];
+                            
+                            if (lastRootFolder && relPath.toLowerCase().startsWith(lastRootFolder.toLowerCase() + '\\')) {
+                                relPath = relPath.substring(lastRootFolder.length + 1);
+                            }
+                            
+                            finalPath = normalizedRoot + (relPath.startsWith('\\') ? '' : '\\') + relPath;
+                        } else if (!r.caminho.toLowerCase().startsWith(normalizedRoot.toLowerCase())) {
+                            // Era um caminho absoluto mas de outro lugar, tenta re-vincular
+                            finalPath = normalizedRoot + '\\' + r.arquivo;
+                        }
+                        
+                        r.caminho = finalPath;
+                    }
+
+                    return {
+                        ...r,
+                        selected: r.selected !== undefined ? r.selected : true,
+                        manual_notes: r.manual_notes || "",
+                        page_range: r.page_range || ""
+                    };
+                });
+
+                if (isWebMode) {
+                    relinkWebFiles();
+                }
+
                 renderUIWithResults();
-                alert('Sessão carregada com sucesso!');
-            } catch (err) { alert('Erro ao carregar arquivo de sessão.'); }
+                alert('Sessão carregada com sucesso!' + (isWebMode && webFiles.length === 0 ? ' Lembre-se de selecionar a pasta para abrir os arquivos.' : ''));
+            } catch (err) { 
+                console.error(err);
+                alert('Erro ao carregar arquivo de sessão.'); 
+            }
         };
         reader.readAsText(file);
     });

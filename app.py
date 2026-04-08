@@ -88,8 +88,6 @@ def run_search_task(directory: str, terms: list):
 # --- App ---
 app = FastAPI()
 static_path = Path("static")
-if static_path.exists():
-    app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
 
 @app.post("/api/search")
 async def start_search(request: Request, bg: BackgroundTasks):
@@ -208,6 +206,9 @@ async def zip_all(request: Request):
         wb.save(excel_out)
         zip_file.writestr("Relatorio_Geral.xlsx", excel_out.getvalue())
     return {"filename": f"pacote_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.zip", "content": base64.b64encode(zip_buffer.getvalue()).decode('utf-8')}
+
+if static_path.exists():
+    app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
